@@ -1,0 +1,54 @@
+{
+  "name": "@1337exp/2pack",
+  "version": "2.0.0-dev.0",
+  "description": "Tiny schema-first binary codec for Node and browsers: typed, bounds-checked, zero dependencies. You own the buffer.",
+  "keywords": [
+    "binary",
+    "serialization",
+    "codec",
+    "schema",
+    "packet",
+    "websocket",
+    "typescript",
+    "gamedev"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc -p tsconfig.build.json",
+    "bench": "node scripts/bench.mjs",
+    "backpressure": "node examples/backpressure.mjs",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "cbor-x": "^1.6.9",
+    "msgpackr": "^2.1.4",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  },
+  "author": "1337exp",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
