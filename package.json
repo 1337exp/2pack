@@ -33,6 +33,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "tsc -p tsconfig.build.json",
+    "mutate": "node scripts/mutate.mjs . scripts/mutations.json",
     "bench": "npm run build && node scripts/bench.mjs",
     "backpressure": "npm run build && node examples/backpressure.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"

@@ -20,7 +20,10 @@ const Packet = define({
     seq: u32,
     kind: enumOf(['join', 'move', 'chat', 'leave']),
     pos: define({ x: quant(-500, 500, 16), y: quant(-500, 500, 16) }),
-    name: optional(str(20)),
+    // limits above 127 and 16383 so the length prefix is wider than the real one: that is where a packet
+    // used to spill bytes past its end
+    name: optional(str(300)),
+    note: str(20000),
     items: array(Item, 6),
     blob: bytes(16),
     score: i64,
@@ -46,6 +49,7 @@ function randomPacket(r: () => number): PacketValue {
         kind: (['join', 'move', 'chat', 'leave'] as const)[int(r, 0, 3)]!,
         pos: { x: Math.fround(int(r, -500, 500)), y: Math.fround(int(r, -500, 500)) },
         name: r() < 0.5 ? undefined : word(20),
+        note: word(40),
         items: Array.from({ length: int(r, 0, 6) }, () => ({ id: int(r, 0, 4294967295), label: word(12), flag: r() < 0.5 })),
         blob: Uint8Array.from({ length: int(r, 0, 16) }, () => int(r, 0, 255)),
         score: BigInt(int(r, -1000000, 1000000)) * 1000000007n,
@@ -89,6 +93,20 @@ describe('round-trip fuzz', () => {
             expect(Buffer.from(dirty.subarray(at, at + n))).toEqual(Buffer.from(Packet.pack(v)));
             expect(dirty.subarray(0, at).every((b) => b === 0xcc)).toBe(true);
             expect(dirty.subarray(at + n).every((b) => b === 0xcc)).toBe(true);
+        }
+    });
+
+    it('packInto into a buffer of exactly the packet size always fits and writes nothing else', () => {
+        const r = rng(7);
+        for (let i = 0; i < 2000; i++) {
+            const v = randomPacket(r);
+            const size = Packet.pack(v).length;
+            const guard = 8;
+            const buf = new Uint8Array(size + 2 * guard).fill(0xab);
+            const n = Packet.packInto(buf.subarray(guard, guard + size), v);
+            expect(n).toBe(size);
+            expect(buf.subarray(0, guard).every((b) => b === 0xab)).toBe(true);
+            expect(buf.subarray(guard + size).every((b) => b === 0xab)).toBe(true);
         }
     });
 

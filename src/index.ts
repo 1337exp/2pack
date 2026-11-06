@@ -1,5 +1,5 @@
 export { PackError, type PackErrorCode } from './errors.js';
-export type { Codec, Infer } from './codec.js';
+export type { Codec, Infer, Value } from './codec.js';
 export {
     array,
     bool,

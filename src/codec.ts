@@ -57,6 +57,21 @@ export interface Codec<T> {
 /** The TypeScript type a codec encodes. / TypeScript-тип, который кодирует кодек. */
 export type Infer<C> = C extends Codec<infer T> ? T : never;
 
+/** Field names whose value may be `undefined` (they come from `optional(...)`). */
+type OptionalKeys<S extends Record<string, Codec<any>>> = {
+    [K in keyof S]: undefined extends Infer<S[K]> ? K : never;
+}[keyof S];
+
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
+
+/**
+ * The value type of `define(shape)`: fields from `optional(...)` may be left out.
+ * Тип значения для `define(shape)`: поля из `optional(...)` можно не указывать.
+ */
+export type Value<S extends Record<string, Codec<any>>> = Simplify<
+    { [K in Exclude<keyof S, OptionalKeys<S>>]: Infer<S[K]> } & { [K in OptionalKeys<S>]?: Infer<S[K]> }
+>;
+
 // ---------------------------------------------------------------------------------------------------------------
 // Internals / Внутреннее устройство
 // ---------------------------------------------------------------------------------------------------------------
@@ -66,6 +81,9 @@ export class Writer {
     u8: Uint8Array = new Uint8Array(0);
     dv: DataView = new DataView(this.u8.buffer);
     pos = 0;
+    /** What `dv` was built for; see `bind`. */
+    boundLen = -1;
+    boundOff = -1;
 }
 
 /** @internal Cursor over a buffer being read; `end` is exclusive. */
@@ -74,6 +92,32 @@ export class Reader {
     dv: DataView = new DataView(this.u8.buffer);
     pos = 0;
     end = 0;
+    boundLen = -1;
+    boundOff = -1;
+}
+
+/**
+ * Point a cursor at `buf`. The DataView is rebuilt unless it was built for this very array with the same length
+ * and offset: a resizable or growable buffer changes length under the same Uint8Array object, and a transferred
+ * (detached) one must not be used through a stale view. A zero-length array is always rebuilt, because a
+ * detached buffer also reports length 0.
+ * Привязать курсор к `buf`. DataView пересоздаётся, если это не тот же массив с той же длиной и смещением
+ * (изменяемый буфер меняет длину, отвязанный нельзя использовать через старое окно).
+ */
+function bind(c: Writer | Reader, buf: Uint8Array): void {
+    const len = buf.byteLength;
+    const off = buf.byteOffset;
+    if (c.u8 === buf && c.boundLen === len && c.boundOff === off && len !== 0) return;
+    let dv: DataView;
+    try {
+        dv = new DataView(buf.buffer, off, len);
+    } catch {
+        return fail('usage', 'the buffer is detached or cannot be used (was it transferred or resized?)');
+    }
+    c.u8 = buf;
+    c.dv = dv;
+    c.boundLen = len;
+    c.boundOff = off;
 }
 
 /** @internal A codec plus the two functions that composite codecs call. */
@@ -107,10 +151,7 @@ export function make<T>(min: number, max: number, write: (w: Writer, v: T) => vo
         if (writing) fail('usage', 'pack called while another pack is running (from a getter?)');
 
         const w = writer;
-        if (w.u8 !== buf) {
-            w.u8 = buf;
-            w.dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-        }
+        bind(w, buf);
         w.pos = offset;
         writing = true;
         try {
@@ -131,7 +172,17 @@ export function make<T>(min: number, max: number, write: (w: Writer, v: T) => vo
     function encodeScratch(data: T): Uint8Array {
         let size = scratch ? scratch.length : Math.min(max, SCRATCH_KEEP);
         for (;;) {
-            const buf = scratch && scratch.length >= size ? scratch : new Uint8Array(size);
+            let buf: Uint8Array;
+            if (scratch && scratch.length >= size) {
+                buf = scratch;
+            } else {
+                try {
+                    buf = new Uint8Array(size);
+                } catch {
+                    // Growing x4 can ask for more than the process can allocate for a value that would have fit.
+                    throw new PackError('range', `this value needs a buffer of up to ${size} bytes, which cannot be allocated`);
+                }
+            }
             try {
                 lastLen = packIntoImpl(buf, data, 0);
             } catch (e) {
@@ -154,10 +205,7 @@ export function make<T>(min: number, max: number, write: (w: Writer, v: T) => vo
             fail('usage', `unpack: range [${offset}, ${stop}) is outside the buffer (length ${buf.length})`);
         }
         const r = reader;
-        if (r.u8 !== buf) {
-            r.u8 = buf;
-            r.dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-        }
+        bind(r, buf);
         r.pos = offset;
         r.end = stop;
         return stop;

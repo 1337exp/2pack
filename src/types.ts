@@ -1,4 +1,4 @@
-import { make, type Codec, type Impl, type Infer, type Reader, type Writer } from './codec.js';
+import { make, type Codec, type Impl, type Reader, type Value, type Writer } from './codec.js';
 import { fail, PackError } from './errors.js';
 
 // Every codec below follows docs/spec.md. Writers validate and throw PackError; readers check every length
@@ -321,40 +321,48 @@ function decodeUtf8(u8: Uint8Array, start: number, n: number): string {
  */
 export function str(maxBytes: number): Codec<string> {
     checkLimit(maxBytes, 'str');
-    const prefix = varLen(maxBytes);
     return make<string>(
         1,
-        prefix + maxBytes,
+        varLen(maxBytes) + maxBytes,
         (w, v) => {
             if (typeof v !== 'string') fail('type', `expected a string, got ${describe(v)}`);
             const len = v.length;
             // A UTF-8 string is never shorter in bytes than in UTF-16 units, so this rejects early and cheaply.
             if (len > maxBytes) fail('range', `string is longer than ${maxBytes} bytes`);
             const u8 = w.u8;
-            const body = w.pos + prefix;
+            // Stage the body exactly where it ends up if the string is pure ASCII (one byte per unit, so the
+            // length prefix is varLen(len)). Nothing is ever written outside the final packet.
+            const asciiPrefix = varLen(len);
+            const body = w.pos + asciiPrefix;
             if (body + len > u8.length) fail('overflow', 'buffer too small for this string');
 
-            let n = len;
             let i = 0;
             for (; i < len; i++) {
                 const c = v.charCodeAt(i);
                 if (c > 127) break;
                 u8[body + i] = c;
             }
-            if (i < len) {
-                const room = Math.min(maxBytes, u8.length - body);
-                const res = encoder.encodeInto(v, u8.subarray(body, body + room));
-                if (res.read < len) {
-                    if (u8.length - body >= maxBytes) fail('range', `string is longer than ${maxBytes} bytes`);
-                    fail('overflow', 'buffer too small for this string');
-                }
-                n = res.written;
+            if (i === len) {
+                writeVar(w, len);
+                w.pos += len;
+                return;
             }
 
-            // The prefix is 1..5 bytes depending on the real length; if it is shorter than the room reserved
-            // for the largest possible length, pull the body back.
+            // Non-ASCII: the byte length n is only known after encoding, and n >= len, so the prefix can only
+            // grow. If it does, move the body right, still inside the final packet.
+            const room = Math.min(maxBytes, u8.length - body);
+            const res = encoder.encodeInto(v, u8.subarray(body, body + room));
+            if (res.read < len) {
+                // Rare error path: find out which limit was hit.
+                if (encoder.encode(v).length > maxBytes) fail('range', `string is longer than ${maxBytes} bytes`);
+                fail('overflow', 'buffer too small for this string');
+            }
+            const n = res.written;
             const actual = varLen(n);
-            if (actual < prefix) u8.copyWithin(w.pos + actual, body, body + n);
+            if (actual !== asciiPrefix) {
+                if (w.pos + actual + n > u8.length) fail('overflow', 'buffer too small for this string');
+                u8.copyWithin(w.pos + actual, body, body + n);
+            }
             writeVar(w, n);
             w.pos += n;
         },
@@ -462,8 +470,10 @@ export function array<T>(item: Codec<T>, maxCount: number): Codec<T[]> {
 }
 
 /**
- * A value that may be absent (`undefined` or `null` when packing, `undefined` when unpacking). Costs 1 byte.
- * Значение, которого может не быть (`undefined` или `null` при упаковке, `undefined` при чтении). 1 байт.
+ * A value that may be absent: `undefined` (typed) or `null` (accepted at runtime, so JSON-shaped data works) when
+ * packing, `undefined` when unpacking. In `define`, the field may be left out. Costs 1 byte.
+ * Значение, которого может не быть: при упаковке `undefined` (по типам) или `null` (принимается в рантайме, чтобы
+ * данные из JSON не ломались), при чтении `undefined`. В `define` поле можно не указывать. Стоит 1 байт.
  */
 export function optional<T>(item: Codec<T>): Codec<T | undefined> {
     const it = impl(item);
@@ -539,8 +549,9 @@ export interface QuantOptions {
  * Координаты, углы, доли.
  */
 export function quant(min: number, max: number, bits: 8 | 16 | 32, options: QuantOptions = {}): Codec<number> {
-    if (!Number.isFinite(min) || !Number.isFinite(max) || !(min < max)) {
-        throw new TypeError('quant: min and max must be finite numbers with min < max');
+    if (!Number.isFinite(min) || !Number.isFinite(max) || !(min < max) || !Number.isFinite(max - min)) {
+        // The last test catches (-MAX_VALUE, MAX_VALUE): both finite, but the span overflows to Infinity.
+        throw new TypeError('quant: min and max must be finite numbers with min < max and a finite span');
     }
     if (bits !== 8 && bits !== 16 && bits !== 32) throw new TypeError('quant: bits must be 8, 16 or 32');
     const size = bits / 8;
@@ -579,7 +590,7 @@ export type Shape = Record<string, Codec<any>>;
  * A record with named fields, written in declaration order. Names are not stored in the packet.
  * Запись с именованными полями, пишется в порядке объявления. Имена в пакет не попадают.
  */
-export function define<S extends Shape>(shape: S): Codec<{ [K in keyof S]: Infer<S[K]> }> {
+export function define<S extends Shape>(shape: S): Codec<Value<S>> {
     const names = Object.keys(shape);
     const codecs: Impl<unknown>[] = [];
     let min = 0;
@@ -596,11 +607,11 @@ export function define<S extends Shape>(shape: S): Codec<{ [K in keyof S]: Infer
         max += c.max;
     }
     const n = names.length;
-    return make<{ [K in keyof S]: Infer<S[K]> }>(
+    return make<Value<S>>(
         min,
         max,
         (w, v) => {
-            if (typeof v !== 'object' || v === null) fail('type', `expected an object, got ${describe(v)}`);
+            if (typeof v !== 'object' || v === null || Array.isArray(v)) fail('type', `expected an object, got ${describe(v)}`);
             const src = v as Record<string, unknown>;
             let i = 0;
             try {
@@ -619,7 +630,7 @@ export function define<S extends Shape>(shape: S): Codec<{ [K in keyof S]: Infer
                 if (e instanceof PackError) e.addPath(names[i]!);
                 throw e;
             }
-            return out as { [K in keyof S]: Infer<S[K]> };
+            return out as Value<S>;
         },
     );
 }

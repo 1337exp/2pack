@@ -30,6 +30,15 @@ describe('spec vectors', () => {
             expect(hex(buf.subarray(3, 3 + n))).toBe(v.hex);
             expect(hex(v.codec.packShared(v.value))).toBe(v.hex);
             expect(buf.subarray(0, 3)).toEqual(new Uint8Array([0xee, 0xee, 0xee]));
+            // nothing may be written AFTER the packet either
+            expect(buf.subarray(3 + n).every((b) => b === 0xee)).toBe(true);
+        });
+        it(`${v.name}: a buffer of exactly the packet size is enough`, () => {
+            const size = v.hex.length / 2;
+            const buf = new Uint8Array(size + 4).fill(0xee);
+            expect(v.codec.packInto(buf.subarray(0, size), v.value)).toBe(size);
+            expect(hex(buf.subarray(0, size))).toBe(v.hex);
+            expect(buf.subarray(size).every((b) => b === 0xee)).toBe(true);
         });
     }
 });

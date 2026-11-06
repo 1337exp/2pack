@@ -1,0 +1,152 @@
+[
+ [
+  "str read: skip max check",
+  "src/types.ts",
+  "if (n > maxBytes) fail('invalid', `string length",
+  "if (false) fail('invalid', `string length"
+ ],
+ [
+  "str read: skip remaining-bytes check",
+  "src/types.ts",
+  "if (n > r.end - r.pos) truncated();\n            const s = decodeUtf8",
+  "const s = decodeUtf8"
+ ],
+ [
+  "varint: allow overlong",
+  "src/types.ts",
+  "if (i > 0 && b === 0) fail('invalid', 'overlong varint');",
+  ""
+ ],
+ [
+  "varint: allow 5th byte > 0x0f",
+  "src/types.ts",
+  "if (i === 4 && b > 0x0f) fail('invalid', 'varint does not fit in 32 bits');",
+  ""
+ ],
+ [
+  "array: skip count-vs-bytes check",
+  "src/types.ts",
+  "if (n * it.min > r.end - r.pos) truncated();",
+  ""
+ ],
+ [
+  "decoder: strip BOM",
+  "src/types.ts",
+  "ignoreBOM: true",
+  "ignoreBOM: false"
+ ],
+ [
+  "bool: accept any non-zero",
+  "src/types.ts",
+  "if (b > 1) fail('invalid', `a boolean must be 0 or 1, got ${b}`);",
+  ""
+ ],
+ [
+  "str write: truncate instead of rejecting",
+  "src/types.ts",
+  "if (len > maxBytes) fail('range', `string is longer than ${maxBytes} bytes`);",
+  ""
+ ],
+ [
+  "pack() returns the shared view",
+  "src/codec.ts",
+  "return buf.slice(0, lastLen);",
+  "return buf.subarray(0, lastLen);"
+ ],
+ [
+  "drop re-entrancy guard",
+  "src/codec.ts",
+  "if (writing) fail('usage', 'pack called while another pack is running (from a getter?)');",
+  ""
+ ],
+ [
+  "unpack: allow trailing bytes",
+  "src/codec.ts",
+  "if (reader.pos !== stop) fail('invalid', `${stop - reader.pos} trailing byte(s) after the value`);",
+  ""
+ ],
+ [
+  "unpack: skip range validation",
+  "src/codec.ts",
+  "stop > buf.length",
+  "false"
+ ],
+ [
+  "u8: wrap instead of reject",
+  "src/types.ts",
+  "if (typeof v !== 'number' || (v & 0xff) !== v) badNumber(v, 'u8');",
+  ""
+ ],
+ [
+  "u16 write: big-endian",
+  "src/types.ts",
+  "w.dv.setUint16(w.pos, v, true);\n        w.pos += 2;\n    },\n    (r) => {\n        if (r.pos + 2 > r.end) truncated();\n        const v = r.dv.getUint16(r.pos, true);",
+  "w.dv.setUint16(w.pos, v, false);\n        w.pos += 2;\n    },\n    (r) => {\n        if (r.pos + 2 > r.end) truncated();\n        const v = r.dv.getUint16(r.pos, true);"
+ ],
+ [
+  "define: allow integer-like names",
+  "src/types.ts",
+  "if (name === '__proto__' || /^(0|[1-9]\\d*)$/.test(name))",
+  "if (name === '__proto__')"
+ ],
+ [
+  "quant: top step not pinned to max",
+  "src/types.ts",
+  "return q === levels ? max : min + (q / levels) * span;",
+  "return min + (q / levels) * span;"
+ ],
+ [
+  "enum read: skip index check",
+  "src/types.ts",
+  "if (i >= names.length) fail('invalid', `enum index ${i} is out of range (${names.length} names)`);",
+  ""
+ ],
+ [
+  "path: do not add field names",
+  "src/types.ts",
+  "if (e instanceof PackError) e.addPath(names[i]!);\n                throw e;\n            }\n        },\n        (r)",
+  "throw e;\n            }\n        },\n        (r)"
+ ],
+ [
+  "str write: scribble a byte after an ASCII packet",
+  "src/types.ts",
+  "writeVar(w, len);\n                w.pos += len;\n                return;",
+  "writeVar(w, len);\n                w.pos += len;\n                if (w.pos < u8.length) u8[w.pos] = 0x69;\n                return;"
+ ],
+ [
+  "str write: demand one spare byte (false overflow)",
+  "src/types.ts",
+  "if (body + len > u8.length) fail('overflow', 'buffer too small for this string');",
+  "if (body + len + 1 > u8.length) fail('overflow', 'buffer too small for this string');"
+ ],
+ [
+  "str write: do not move the grown prefix body",
+  "src/types.ts",
+  "u8.copyWithin(w.pos + actual, body, body + n);",
+  ""
+ ],
+ [
+  "cursor cache: trust identity only",
+  "src/codec.ts",
+  "c.u8 === buf && c.boundLen === len && c.boundOff === off && len !== 0",
+  "c.u8 === buf"
+ ],
+ [
+  "quant: allow infinite span",
+  "src/types.ts",
+  " || !Number.isFinite(max - min)",
+  ""
+ ],
+ [
+  "define: accept arrays",
+  "src/types.ts",
+  " || Array.isArray(v)) fail('type', `expected an object",
+  ") fail('type', `expected an object"
+ ],
+ [
+  "scratch alloc failure is not converted",
+  "src/codec.ts",
+  "throw new PackError('range', `this value needs a buffer of up to",
+  "throw new RangeError(`this value needs a buffer of up to"
+ ]
+]

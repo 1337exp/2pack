@@ -108,6 +108,7 @@ npm run typecheck
 npm test
 npm run build
 npm run bench
+npm run mutate
 npm run backpressure
 ```
 

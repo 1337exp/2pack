@@ -9,6 +9,7 @@ There is **no schema on the wire**: no field names, no tags, no version byte, no
 - **Byte order is little-endian**, on every host.
 - **Fields are written in schema order** (the declaration order of `define({...})`). Appending a field to a schema changes the format for old data; see "Evolution" below.
 - **Every variable-size value has a declared maximum.** The encoder rejects a value above it (it never truncates). The decoder rejects an encoded length above it. Because of this, every codec has a finite `min` and `max` size in bytes, so a buffer of `max` bytes always fits any value.
+- **An encoder never writes outside the packet.** `packInto` touches exactly the bytes it reports, nothing before `offset` and nothing after the packet, and a buffer of exactly the packet's size is enough. A buffer that is detached, or was resized after use, is a `PackError`, never a raw `TypeError`.
 - **A decoder never reads outside `[offset, end)`** and never trusts a length it has not checked against both its declared maximum and the bytes that remain.
 - **Decoding is strict where the format is canonical** (booleans, enum indices, varints) and returns an error instead of guessing.
 - **`unpack` consumes its range exactly.** Bytes left over after the value are an error (`invalid`); `unpackAt` allows them and returns where the value ended, for reading several values from one buffer.
@@ -28,7 +29,7 @@ There is **no schema on the wire**: no field names, no tags, no version byte, no
 | `str(max)` | `varuint` byte length `n` (`n <= max`), then `n` UTF-8 bytes | `string` |
 | `bytes(max)` | `varuint` length `n` (`n <= max`), then `n` raw bytes | `Uint8Array` |
 | `array(item, maxCount)` | `varuint` count (`<= maxCount`), then the items | `T[]` |
-| `optional(item)` | 1 byte presence (`00` absent, `01` present), then the item if present | `T \| undefined` |
+| `optional(item)` | 1 byte presence (`00` absent, `01` present), then the item if present | `T \| undefined` (an encoder also treats `null` as absent; inside `define` the field may be left out) |
 | `enumOf(names)` | index of the name: 1 byte if there are at most 256 names, otherwise 2 bytes (`u16`) | one of the names |
 | `quant(min, max, bits)` | `bits` is 8, 16 or 32; unsigned integer `q = round((v - min) / (max - min) * (2^bits - 1))` | `number` in `[min, max]` |
 | `define({...})` | the fields' encodings in declaration order | object |
@@ -49,7 +50,7 @@ The encoder requires an integer inside the type's range and throws otherwise (`3
 
 ### Quantized numbers
 
-`quant` is for values with a known range and a known acceptable error: positions, angles, `0..1` ratios. `round` is round-half-up (`Math.round`). The decoder returns `min + q / (2^bits - 1) * (max - min)`, and exactly `max` for the top step; so `0.5` in `quant(0, 1, 8)` is stored as `0x80` and decodes to `128 / 255`, not `0.5`. The decoded value is within `(max - min) / (2^bits - 1) / 2` of the original. By default the encoder throws for a value outside `[min, max]` or `NaN`; with `{ clamp: true }` it clamps to the range (it still throws for `NaN`).
+`quant` is for values with a known range and a known acceptable error: positions, angles, `0..1` ratios. `round` is round-half-up (`Math.round`). The decoder returns `min + q / (2^bits - 1) * (max - min)`, and exactly `max` for the top step; so `0.5` in `quant(0, 1, 8)` is stored as `0x80` and decodes to `128 / 255`, not `0.5`. The decoded value is within `(max - min) / (2^bits - 1) / 2` of the original. By default the encoder throws for a value outside `[min, max]` or `NaN`; with `{ clamp: true }` it clamps to the range (it still throws for `NaN`). `min` and `max` must be finite and `max - min` must be finite too: `quant(-Number.MAX_VALUE, Number.MAX_VALUE, 8)` is refused when the schema is built.
 
 ## Evolution
 
