@@ -33,8 +33,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "tsc -p tsconfig.build.json",
-    "bench": "node scripts/bench.mjs",
-    "backpressure": "node examples/backpressure.mjs",
+    "bench": "npm run build && node scripts/bench.mjs",
+    "backpressure": "npm run build && node examples/backpressure.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
