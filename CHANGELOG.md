@@ -22,4 +22,6 @@ Fixed before the first release, after an independent review of the first commit 
 - `define` made optional fields required in the TypeScript type; they can now be left out.
 - A value too big to allocate a scratch buffer for threw a raw `RangeError`; it is a `PackError` now.
 
+`npm run browser` runs 91 checks (spec vectors, ownership, bounds, hostile input, resizable and detached buffers) in a real browser; passed in Chromium 152.
+
 `npm run mutate` breaks the code in 25 deliberate ways, one at a time, and checks that the tests notice every one.

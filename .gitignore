@@ -16,3 +16,6 @@ dist
 
 # The old 1.x code, kept next to the rewrite as a source of ideas; removed when v2 is done
 архив/
+
+# Output of `npm run browser`
+.browser/

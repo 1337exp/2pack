@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>2pack browser check</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body { font: 14px/1.5 ui-monospace, Consolas, monospace; margin: 24px; max-width: 900px; }
+        pre { white-space: pre-wrap; }
+        p { max-width: 70ch; }
+    </style>
+</head>
+<body>
+    <h1>2pack in the browser</h1>
+    <p>
+        Runs the spec vectors, the ownership rules, bounds checks, hostile-input fuzzing and resizable / detached buffers
+        against the real library, here, in this browser. The tab title turns into <b>PASS n</b> or <b>FAIL n</b>.
+        Запускает эталонные векторы, правила владения, проверки границ, фаззинг враждебного ввода и меняющиеся буферы
+        на настоящей библиотеке в этом браузере.
+    </p>
+    <pre id="out">running…</pre>
+    <script type="module" src="./check.js"></script>
+</body>
+</html>

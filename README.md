@@ -77,6 +77,7 @@ Handing a `packShared` view to `socket.write()` is a real bug under backpressure
 - Decoding never reads outside `[offset, end)` and checks every length against both its declared maximum and the bytes that remain. A count of a billion items in a ten-byte packet is rejected before anything is allocated.
 - Hostile or corrupt bytes throw `PackError` and nothing else: checked by tests with truncation of every packet at every length and 40 000 random corruptions.
 - Results are plain objects that own their data. `packInto` writes only the packet's bytes.
+- The same checks run in a real browser: `npm run browser` serves a page that runs the spec vectors, the fuzzing and the resizable-buffer cases against the library and turns the tab title into PASS or FAIL (tried in Chromium; no dependencies).
 
 ## Speed and size
 
@@ -110,6 +111,7 @@ npm run build
 npm run bench
 npm run mutate
 npm run backpressure
+npm run browser
 ```
 
 ## License
