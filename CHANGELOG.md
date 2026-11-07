@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0-dev.0
+## 2.0.0
 
 A rewrite from scratch; not compatible with 1.x.
 

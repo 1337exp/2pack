@@ -108,7 +108,7 @@ A serializer sits on the network edge, so it should be tested like it. What this
 - **Independent adversarial review** by another AI model (Grok), which read the spec and wrote its own differential fuzzers against the library. It found 6 bugs, one of them serious (`packInto` wrote bytes after the end of the packet) and missed by our own tests. All fixed, each pinned by a regression test (`tests/regressions.test.ts`).
 - **A real browser**: `npm run browser` runs 95 checks in the page (Chromium 152).
 
-What it has **not** had: a human security audit, production traffic, Firefox or Safari, or a big-endian machine. Version 2 is a development build, so pin the exact version until it has been out for a while.
+What it has **not** had: a human security audit, production traffic, Firefox or Safari, or a big-endian machine. Version 2 is brand new, so pin the exact version until it has been out for a while.
 
 ## Speed and size
 
