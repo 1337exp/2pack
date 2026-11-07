@@ -1,6 +1,6 @@
 {
   "name": "@1337exp/2pack",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Tiny schema-first binary codec for Node and browsers: typed, bounds-checked, zero dependencies. You own the buffer.",
   "keywords": [
     "binary",
