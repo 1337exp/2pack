@@ -13,6 +13,15 @@
     "gamedev"
   ],
   "type": "module",
+  "homepage": "https://666.io",
+  "bugs": {
+    "url": "https://github.com/1337exp/2pack/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1337exp/2pack.git"
+  },
+  "author": "1337exp",
   "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
