@@ -10,6 +10,7 @@ A rewrite from scratch; not compatible with 1.x.
 - Declared maximum for every string, byte array and list; values over it are errors, never truncated. Integers are checked, not wrapped.
 - Decoding is bounds-checked and throws only `PackError`, with a `code` and a `path`.
 - New types: `bool`, `varuint`, `varint`, `optional`, `array`, `enumOf`, `quant`, nested `define`.
+- Schema evolution by appending: `added(type, default)` fields at the end of a top-level record, and `define(shape, { extensible: true })` so that a first version already ignores what a later one appends. Zero bytes on the wire, no measurable speed cost, rules in `docs/spec.md`.
 - Zero dependencies, ESM only, no code generation, no build step beyond `tsc`.
 - Removed: runtime string schemas, the `offset` setter, `json<N>`, the browser Buffer polyfill, the UMD bundle.
 
@@ -22,6 +23,6 @@ Fixed before the first release, after an independent review of the first commit 
 - `define` made optional fields required in the TypeScript type; they can now be left out.
 - A value too big to allocate a scratch buffer for threw a raw `RangeError`; it is a `PackError` now.
 
-`npm run browser` runs 91 checks (spec vectors, ownership, bounds, hostile input, resizable and detached buffers) in a real browser; passed in Chromium 152.
+`npm run browser` runs 95 checks (spec vectors, ownership, bounds, hostile input, resizable and detached buffers) in a real browser; passed in Chromium 152.
 
 `npm run mutate` breaks the code in 25 deliberate ways, one at a time, and checks that the tests notice every one.

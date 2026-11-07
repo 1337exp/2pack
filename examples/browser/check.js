@@ -2,7 +2,7 @@
 // run against the real library in a real browser. Open it with `npm run browser`.
 // Проверка 2pack в браузере: эталонные векторы, правила владения, границы, враждебный ввод и меняющиеся буферы.
 // Запускается командой `npm run browser`. Results go to the page and to window.__result (for automation).
-import { array, bool, bytes, define, enumOf, f32, f64, i16, i32, i64, optional, PackError, quant, str, u16, u32, u64, u8, varint, varuint } from './src/index.js';
+import { added, array, bool, bytes, define, enumOf, f32, f64, i16, i32, i64, optional, PackError, quant, str, u16, u32, u64, u8, varint, varuint } from './src/index.js';
 import { vectors } from './tests/vectors.js';
 
 const hex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -128,6 +128,32 @@ group('resizable and detached buffers');
 test('resizable buffer that grows', () => { const ab = new ArrayBuffer(8, { maxByteLength: 64 }); const u = new Uint8Array(ab); u32.packInto(u, 1); ab.resize(32); eq(u32.packInto(u, 0xdeadbeef, 16), 4); eq(u32.unpack(u, 16, 20), 0xdeadbeef); });
 test('resizable buffer that shrinks', () => { const ab = new ArrayBuffer(16, { maxByteLength: 64 }); const u = new Uint8Array(ab); u8.packInto(u, 1); ab.resize(4); eq(u8.packInto(u, 2), 1); eq(code(() => u32.packInto(u, 1, 2)), 'overflow'); });
 test('transferred (detached) buffer is a PackError and codecs keep working', () => { const ab = new ArrayBuffer(8); const u = new Uint8Array(ab); u8.packInto(u, 1); ab.transfer(); ok(code(() => u8.packInto(u, 2)) !== 'none'); ok(code(() => u8.unpack(u)) !== 'none'); eq(hex(u16.pack(0x0102)), '0201'); });
+
+// --- schema evolution ---------------------------------------------------------------------------------------------
+group('schema evolution');
+const V1 = define({ id: u8, name: str(8) }, { extensible: true });
+const V2 = define({ id: u8, name: str(8), hp: added(u16, 100) });
+const V3 = define({ id: u8, name: str(8), hp: added(u16, 100), tag: added(str(4), 'none') });
+test('3 x 3: every generation reads every other generation', () => {
+    const packets = [V1.pack({ id: 1, name: 'a' }), V2.pack({ id: 1, name: 'a', hp: 1 }), V3.pack({ id: 1, name: 'a', hp: 1, tag: 't' })];
+    for (const p of packets) for (const reader of [V1, V2, V3]) { const g = reader.unpack(p); eq(g.id, 1); eq(g.name, 'a'); }
+});
+test('a new reader defaults what an old writer did not send; an old reader ignores the new tail', () => {
+    eq(V3.unpack(V1.pack({ id: 2, name: 'zz' })), { id: 2, name: 'zz', hp: 100, tag: 'none' });
+    eq(V1.unpack(V3.pack({ id: 3, name: 'q', hp: 9, tag: 'abcd' })), { id: 3, name: 'q' });
+});
+test('a packet cut in the middle of an added field is truncated, not defaulted', () => {
+    const full = V3.pack({ id: 1, name: 'ab', hp: 0x0102, tag: 'abc' });
+    eq(hex(V2.pack({ id: 1, name: 'ab', hp: 0x0203 })), '010261620302', 'wire bytes');
+    eq(code(() => V3.unpack(full.subarray(0, 5))), 'truncated', 'cut inside hp');
+    eq(code(() => V3.unpack(full.subarray(0, 6))), 'none', 'cut on a boundary');
+});
+test('an extensible record cannot be nested; a closed record rejects a newer tail', () => {
+    let refused = 0;
+    for (const f of [() => array(V1, 2), () => optional(V1), () => define({ inner: V1 })]) { try { f(); } catch (e) { if (e instanceof TypeError) refused++; } }
+    eq(refused, 3, 'nesting refusals');
+    eq(code(() => define({ id: u8, name: str(8) }).unpack(V2.pack({ id: 1, name: 'a', hp: 1 }))), 'invalid');
+});
 
 // --- speed (informational) ----------------------------------------------------------------------------------------
 const hero = { name: 'Hero_123456', lvl: 42, hp: 1337, gm: 3, x: 300.9, y: -300.52 };

@@ -12,7 +12,7 @@ There is **no schema on the wire**: no field names, no tags, no version byte, no
 - **An encoder never writes outside the packet.** `packInto` touches exactly the bytes it reports, nothing before `offset` and nothing after the packet, and a buffer of exactly the packet's size is enough. A buffer that is detached, or was resized after use, is a `PackError`, never a raw `TypeError`.
 - **A decoder never reads outside `[offset, end)`** and never trusts a length it has not checked against both its declared maximum and the bytes that remain.
 - **Decoding is strict where the format is canonical** (booleans, enum indices, varints) and returns an error instead of guessing.
-- **`unpack` consumes its range exactly.** Bytes left over after the value are an error (`invalid`); `unpackAt` allows them and returns where the value ended, for reading several values from one buffer.
+- **`unpack` consumes its range exactly.** Bytes left over after the value are an error (`invalid`); `unpackAt` allows them and returns where the value ended, for reading several values from one buffer. The one exception is an *extensible* record (see "Evolution"), which owns the rest of its range.
 
 ## Types
 
@@ -33,6 +33,7 @@ There is **no schema on the wire**: no field names, no tags, no version byte, no
 | `enumOf(names)` | index of the name: 1 byte if there are at most 256 names, otherwise 2 bytes (`u16`) | one of the names |
 | `quant(min, max, bits)` | `bits` is 8, 16 or 32; unsigned integer `q = round((v - min) / (max - min) * (2^bits - 1))` | `number` in `[min, max]` |
 | `define({...})` | the fields' encodings in declaration order | object |
+| `added(item, default)` | a field of a newer schema version, last in its record; same bytes as `item` | like `item` |
 
 ### Varints are canonical
 
@@ -54,14 +55,31 @@ The encoder requires an integer inside the type's range and throws otherwise (`3
 
 ## Evolution
 
-Version 2.0 has **no schema evolution**: a packet is only decodable with exactly the schema that wrote it. Versioning is the application's job, and the intended pattern is a small header codec in front of the payload:
+A packet carries no field names or tags, so a reader needs the schema that wrote it. The format supports one kind of change for free: **appending fields at the end of a top-level record**.
+
+```ts
+// version 1, declared extensible from the start
+const Player = define({ id: u32, name: str(16) }, { extensible: true });
+// version 2: the new field goes LAST, wrapped in added(); the number is what an older packet decodes to
+const Player = define({ id: u32, name: str(16), shield: added(u16, 0) });
+```
+
+Rules, all of them enforced:
+
+- The writer always writes every field it knows. Nothing extra is stored: **zero bytes of overhead**.
+- A reader knows where the packet ends (`end`, from the transport: a WebSocket message, a length prefix). **Reading an older packet**: after the last required field, every `added` field that starts exactly at `end` takes its default. A packet that ends in the middle of a field is `truncated`, not defaulted.
+- **Reading a newer packet**: a record that is *extensible* ignores the bytes after its last known field. A record is extensible if it has `added` fields or was declared with `{ extensible: true }`. **A reader built without it rejects such a packet** (`invalid`, trailing bytes), so declare it from the first version of a message.
+- `added` fields must be the last fields of the record.
+- An extensible record owns the rest of its range, so it can only be the top-level codec: it cannot be an array item, an `optional` or a field of another record. `define`, `array`, `optional` and `added` refuse it at schema-build time.
+- `unpackAt` on an extensible record returns the end of its range as the end offset.
+- The default of `added` must be a valid value of the field's type (checked when the schema is built); object defaults are copied for every decode.
+
+What it cannot do: remove, reorder or change the type of a field, or evolve a record nested inside another. The price of an extensible record is that extra bytes are no longer reported as an error. Anything beyond appending still goes through a version in a small header codec:
 
 ```ts
 const Header = define({ type: u8, version: u8 });
 // choose the payload codec by (type, version)
 ```
-
-A field-level evolution rule (append-only fields with an "unknown tail is skipped" rule) is a candidate for a later minor version, not part of this format.
 
 ## Errors
 

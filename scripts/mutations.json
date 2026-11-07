@@ -62,7 +62,7 @@
  [
   "unpack: allow trailing bytes",
   "src/codec.ts",
-  "if (reader.pos !== stop) fail('invalid', `${stop - reader.pos} trailing byte(s) after the value`);",
+  "if (!open && reader.pos !== stop) fail('invalid', `${stop - reader.pos} trailing byte(s) after the value`);",
   ""
  ],
  [
@@ -148,5 +148,59 @@
   "src/codec.ts",
   "throw new PackError('range', `this value needs a buffer of up to",
   "throw new RangeError(`this value needs a buffer of up to"
+ ],
+ [
+  "evolution: do not default added fields",
+  "src/types.ts",
+  "out[names[i]!] = typeof f === 'object' && f !== null ? structuredClone(f) : f;",
+  "out[names[i]!] = undefined;"
+ ],
+ [
+  "evolution: share object defaults between decodes",
+  "src/types.ts",
+  "structuredClone(f)",
+  "f"
+ ],
+ [
+  "evolution: allow a required field after an added one",
+  "src/types.ts",
+  "if (required < names.length) throw new TypeError(`define: field \"${name}\" comes after an added(...) field; added fields must be last`);",
+  ""
+ ],
+ [
+  "evolution: allow nesting an extensible record",
+  "src/types.ts",
+  "    if (i.open) {\n        throw",
+  "    if (false) {\n        throw"
+ ],
+ [
+  "evolution: closed records also ignore the tail",
+  "src/codec.ts",
+  "if (!open && reader.pos !== stop)",
+  "if (false)"
+ ],
+ [
+  "evolution: ignore the extensible option",
+  "src/types.ts",
+  "options.extensible === true || required < n",
+  "required < n"
+ ],
+ [
+  "evolution: default a field cut in the middle",
+  "src/types.ts",
+  "if (r.pos >= r.end) {",
+  "if (r.pos + 1 >= r.end) {"
+ ],
+ [
+  "evolution: unpackAt end for extensible records",
+  "src/codec.ts",
+  "return [value, open ? stop : reader.pos];",
+  "return [value, reader.pos];"
+ ],
+ [
+  "evolution: do not validate the default",
+  "src/types.ts",
+  "        it.pack(fallback);\n",
+  ""
  ]
 ]

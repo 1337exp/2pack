@@ -427,13 +427,22 @@ function impl<T>(c: Codec<T>): Impl<T> {
     return i;
 }
 
+/** An extensible record owns the rest of its range, so something placed after it could never be found. */
+function nestable<T>(c: Codec<T>, where: string): Impl<T> {
+    const i = impl(c);
+    if (i.open) {
+        throw new TypeError(`${where}: a record with added(...) fields can only be the top-level codec, it cannot be nested`);
+    }
+    return i;
+}
+
 /**
  * A list of `item`s, at most `maxCount` of them.
  * Список из `item`, не больше `maxCount` штук.
  */
 export function array<T>(item: Codec<T>, maxCount: number): Codec<T[]> {
     checkLimit(maxCount, 'array');
-    const it = impl(item);
+    const it = nestable(item, 'array');
     if (it.max === 0) throw new TypeError('array: the item type is empty (zero bytes), an array of it is meaningless');
     return make<T[]>(
         1,
@@ -476,7 +485,7 @@ export function array<T>(item: Codec<T>, maxCount: number): Codec<T[]> {
  * данные из JSON не ломались), при чтении `undefined`. В `define` поле можно не указывать. Стоит 1 байт.
  */
 export function optional<T>(item: Codec<T>): Codec<T | undefined> {
-    const it = impl(item);
+    const it = nestable(item, 'optional');
     return make<T | undefined>(
         1,
         1 + it.max,
@@ -587,26 +596,69 @@ export function quant(min: number, max: number, bits: 8 | 16 | 32, options: Quan
 export type Shape = Record<string, Codec<any>>;
 
 /**
- * A record with named fields, written in declaration order. Names are not stored in the packet.
- * Запись с именованными полями, пишется в порядке объявления. Имена в пакет не попадают.
+ * Mark a field of a record as added in a newer version of the schema. A packet written by an older writer ends
+ * before this field; then the reader fills it with `fallback`. The writer always writes it. Added fields must be
+ * the LAST fields of the record, and a record that has any can only be the top-level codec. See docs/spec.md,
+ * "Evolution".
+ * Пометить поле записи как добавленное в новой версии схемы. Пакет старого писателя кончается до этого поля,
+ * тогда читатель подставляет `fallback`. Писатель пишет его всегда. Добавленные поля должны идти ПОСЛЕДНИМИ,
+ * а запись с такими полями может быть только верхнего уровня. См. docs/spec.md, «Evolution».
  */
-export function define<S extends Shape>(shape: S): Codec<Value<S>> {
+export function added<T>(item: Codec<T>, fallback: T): Codec<T> {
+    const it = nestable(item, 'added');
+    try {
+        it.pack(fallback);
+    } catch (e) {
+        throw new TypeError(`added: the default is not a valid value for this type (${e instanceof Error ? e.message : String(e)})`);
+    }
+    const marked: Impl<T> = { ...it, isAdded: true, fallback };
+    return marked;
+}
+
+export interface DefineOptions {
+    /**
+     * Let this record's readers ignore bytes after the last field they know (fields a NEWER writer appended).
+     * Declare it from the first version of a message: a reader built without it rejects such packets. A record
+     * with `added(...)` fields is extensible automatically. Costs nothing on the wire; the price is that extra
+     * bytes are no longer reported as an error. Top-level codec only.
+     * Читатели такой записи игнорируют байты после последнего известного поля (поля, дописанные БОЛЕЕ НОВЫМ
+     * писателем). Объявляйте с первой версии сообщения: читатель без этой опции такие пакеты отвергает.
+     * Запись с `added(...)` расширяема автоматически. На проводе бесплатно, но лишние байты больше не ошибка.
+     */
+    extensible?: boolean;
+}
+
+/**
+ * A record with named fields, written in declaration order. Names are not stored in the packet.
+ * Fields wrapped in `added(...)` (at the end) make it evolvable: see `added`.
+ * Запись с именованными полями, пишется в порядке объявления. Имена в пакет не попадают.
+ * Поля в `added(...)` (в конце) делают запись развиваемой: см. `added`.
+ */
+export function define<S extends Shape>(shape: S, options: DefineOptions = {}): Codec<Value<S>> {
     const names = Object.keys(shape);
     const codecs: Impl<unknown>[] = [];
     let min = 0;
     let max = 0;
-    for (const name of names) {
+    let required = names.length; // how many leading fields are not `added`
+    for (const [index, name] of names.entries()) {
         // Integer-like keys would be reordered by JS (`{ b: …, 1: … }` iterates 1 first) and `__proto__` would
         // change the prototype of every decoded object.
         if (name === '__proto__' || /^(0|[1-9]\d*)$/.test(name)) {
             throw new TypeError(`define: "${name}" is not allowed as a field name`);
         }
-        const c = impl(shape[name]!);
+        const c = nestable(shape[name]!, `define: field "${name}"`);
+        if (c.isAdded) {
+            if (required === names.length) required = index;
+        } else {
+            if (required < names.length) throw new TypeError(`define: field "${name}" comes after an added(...) field; added fields must be last`);
+            min += c.min;
+        }
         codecs.push(c);
-        min += c.min;
         max += c.max;
     }
     const n = names.length;
+    const open = options.extensible === true || required < n;
+    const fallbacks = codecs.map((c) => c.fallback);
     return make<Value<S>>(
         min,
         max,
@@ -625,12 +677,23 @@ export function define<S extends Shape>(shape: S): Codec<Value<S>> {
             const out: Record<string, unknown> = {};
             let i = 0;
             try {
-                for (; i < n; i++) out[names[i]!] = codecs[i]!.read(r);
+                for (; i < required; i++) out[names[i]!] = codecs[i]!.read(r);
+                // Added fields: if the packet already ended exactly on a field boundary, it came from an older
+                // writer and the field takes its default. A packet that ends in the middle of one is truncated.
+                for (; i < n; i++) {
+                    if (r.pos >= r.end) {
+                        const f = fallbacks[i];
+                        out[names[i]!] = typeof f === 'object' && f !== null ? structuredClone(f) : f;
+                    } else {
+                        out[names[i]!] = codecs[i]!.read(r);
+                    }
+                }
             } catch (e) {
                 if (e instanceof PackError) e.addPath(names[i]!);
                 throw e;
             }
             return out as Value<S>;
         },
+        open,
     );
 }

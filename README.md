@@ -54,10 +54,25 @@ const payload = Hello.unpack(buf, at, n);
 | `array(item, maxCount)` `optional(item)` `enumOf([...])` | |
 | `quant(min, max, bits)` | a number in a known range stored in 8, 16 or 32 bits |
 | `define({...})` | a record, fields in declaration order, names are not sent |
+| `added(item, default)` | a field added in a newer version, last in its record, see [Evolving a packet](#evolving-a-packet) |
 
 Every variable-size type has a declared maximum, so every codec has a finite `min` and `max` size: `new Uint8Array(codec.max)` always fits.
 
 The byte-level format is in [docs/spec.md](docs/spec.md), with test vectors in `tests/vectors.ts`.
+
+## Evolving a packet
+
+Packets are strict: no names or tags on the wire, so a reader needs the schema that wrote them. One kind of change is supported, and it costs nothing on the wire or in speed: **appending fields at the end**.
+
+```ts
+// version 1: declared extensible from the start, so it already ignores fields a later version appends
+const Player = define({ id: u32, name: str(16) }, { extensible: true });
+
+// version 2: the new field goes last, wrapped in added(); an older packet decodes with the default
+const Player = define({ id: u32, name: str(16), shield: added(u16, 0) });
+```
+
+New server, old client and old server, new client both work: a new reader fills what an old packet lacks, an old reader skips what a new packet adds. The rules and what it cannot do (removing or reordering fields, nesting) are in [docs/spec.md](docs/spec.md#evolution). Two things to know: it relies on the transport telling you where the packet ends (a WebSocket message does), and an extensible record no longer reports extra bytes as an error.
 
 ## You own the buffer
 
@@ -79,6 +94,18 @@ Handing a `packShared` view to `socket.write()` is a real bug under backpressure
 - Results are plain objects that own their data. `packInto` writes only the packet's bytes.
 - The same checks run in a real browser: `npm run browser` serves a page that runs the spec vectors, the fuzzing and the resizable-buffer cases against the library and turns the tab title into PASS or FAIL (tried in Chromium; no dependencies).
 
+## How much to trust it
+
+A serializer sits on the network edge, so it should be tested like it. What this one has been through:
+
+- **336 tests**, and the byte format is pinned by **53 hand-computed vectors** from the spec, each checked packing, unpacking, into an exactly sized buffer and with the surroundings untouched.
+- **Seeded, reproducible fuzzing.** Thousands of random packets round-trip; every packet is truncated at every length; 40 000 random single-byte corruptions and 20 000 random buffers are fed to the decoders. The rule being tested: decoding hostile bytes throws `PackError` and nothing else, and never allocates for a length the input cannot back.
+- **Mutation check** (`npm run mutate`): the code is broken in 34 deliberate ways, one at a time (drop a bounds check, flip a byte order, wrap instead of reject, ...), and the tests must notice every one. They do. The first run let 2 of 19 through, which exposed two weak tests, now fixed.
+- **Independent adversarial review** by another AI model (Grok), which read the spec and wrote its own differential fuzzers against the library. It found 6 bugs, one of them serious (`packInto` wrote bytes after the end of the packet) and missed by our own tests. All fixed, each pinned by a regression test (`tests/regressions.test.ts`).
+- **A real browser**: `npm run browser` runs 95 checks in the page (Chromium 152).
+
+What it has **not** had: a human security audit, production traffic, Firefox or Safari, or a big-endian machine. Version 2 is a development build, so pin the exact version until it has been out for a while.
+
 ## Speed and size
 
 One machine (Node 22, Windows), small objects, median of 5 runs. `npm run bench` reproduces it. Compared on the safe `pack`, which copies.
@@ -98,7 +125,7 @@ The size win is the structural one: with a schema on both sides, names and type 
 
 ## Not yet
 
-- **Schema evolution.** A packet decodes only with the schema that wrote it. Put a version in a small header codec (see the spec).
+- **Removing or reordering fields.** Only appending is supported; anything else goes through a version in a small header codec (see the spec).
 - **A second implementation.** The format is specified byte for byte so another language can implement it, but only the TypeScript one exists.
 - **A CommonJS build.** ESM only; Node 22 can `require()` it.
 

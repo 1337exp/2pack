@@ -1,6 +1,7 @@
 export { PackError, type PackErrorCode } from './errors.js';
 export type { Codec, Infer, Value } from './codec.js';
 export {
+    added,
     array,
     bool,
     bytes,
@@ -22,6 +23,7 @@ export {
     varint,
     varuint,
     type BytesOptions,
+    type DefineOptions,
     type QuantOptions,
     type Shape,
 } from './types.js';
