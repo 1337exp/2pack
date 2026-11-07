@@ -31,10 +31,10 @@ export interface Codec<T> {
      * Encode into this codec's internal scratch buffer and return a **view** of it. Zero data allocation, but the
      * bytes are overwritten by the next `pack` or `packShared` on this codec: copy them or finish sending
      * before then. Do NOT hand the view to `socket.write()` / `ws.send()` and encode again in the same tick:
-     * see docs/buffer-ownership.md.
+     * see https://github.com/1337exp/2pack/blob/main/docs/buffer-ownership.md.
      * Упаковать во внутренний буфер кодека и вернуть **окно** на него. Данные не копируются, но следующий
      * `pack*` этого кодека перезапишет их. Нельзя отдавать окно в `socket.write()` / `ws.send()` и упаковывать
-     * дальше в том же такте: см. docs/buffer-ownership.md.
+     * дальше в том же такте: см. https://github.com/1337exp/2pack/blob/main/docs/buffer-ownership.ru.md.
      */
     packShared(data: T): Uint8Array;
 

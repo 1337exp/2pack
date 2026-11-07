@@ -43,6 +43,8 @@ const [header, at] = Header.unpackAt(buf, 0, n);
 const payload = Hello.unpack(buf, at, n);
 ```
 
+> **Before you send:** `packShared` is the fastest way to pack, but its bytes are overwritten by the next call, and `socket.write()` can hold on to them under backpressure. See [You own the buffer](#you-own-the-buffer).
+
 ## Types
 
 | | |
@@ -58,7 +60,9 @@ const payload = Hello.unpack(buf, at, n);
 
 Every variable-size type has a declared maximum, so every codec has a finite `min` and `max` size: `new Uint8Array(codec.max)` always fits.
 
-The byte-level format is in [docs/spec.md](docs/spec.md), with test vectors in `tests/vectors.ts`.
+`str(n)` counts **bytes** of UTF-8, not characters: `str(16)` holds 16 Latin letters but only 8 Cyrillic ones. A string that does not fit throws `PackError`; it is never truncated, because silent truncation hides bugs (two long names become one). Set the cap generously (at least 3 x the limit in `.length`) and check the real limit where the value enters your app, for example `name.length <= 32` with `str(255)`. The wire carries only the actual length, so a high cap costs no bytes.
+
+The byte-level format is in [docs/spec.md](https://github.com/1337exp/2pack/blob/main/docs/spec.md), with test vectors in `tests/vectors.ts`.
 
 ## Evolving a packet
 
@@ -72,7 +76,7 @@ const Player = define({ id: u32, name: str(16) }, { extensible: true });
 const Player = define({ id: u32, name: str(16), shield: added(u16, 0) }, { extensible: true });
 ```
 
-New server, old client and old server, new client both work: a new reader fills what an old packet lacks, an old reader skips what a new packet adds. The rules and what it cannot do (removing or reordering fields, nesting) are in [docs/spec.md](docs/spec.md#evolution). Two things to know: it relies on the transport telling you where the packet ends (a WebSocket message does), and an extensible record no longer reports extra bytes as an error (that is the price of opting in).
+New server, old client and old server, new client both work: a new reader fills what an old packet lacks, an old reader skips what a new packet adds. The rules and what it cannot do (removing or reordering fields, nesting) are in [docs/spec.md](https://github.com/1337exp/2pack/blob/main/docs/spec.md#evolution). Two things to know: it relies on the transport telling you where the packet ends (a WebSocket message does), and an extensible record no longer reports extra bytes as an error (that is the price of opting in).
 
 ## You own the buffer
 
@@ -84,7 +88,7 @@ Three ways to pack, and a page explaining why:
 | `packInto(buf, value, offset?)` | none | in **your** buffer |
 | `packShared(value)` | none | a view, overwritten by the next call |
 
-Handing a `packShared` view to `socket.write()` is a real bug under backpressure: [Who owns the bytes](docs/buffer-ownership.md) shows it happening and explains it. `npm run backpressure` reproduces it on your machine.
+Handing a `packShared` view to `socket.write()` is a real bug under backpressure: [Who owns the bytes](https://github.com/1337exp/2pack/blob/main/docs/buffer-ownership.md) shows it happening and explains it. `npm run backpressure` reproduces it on your machine.
 
 ## Safe by construction
 
