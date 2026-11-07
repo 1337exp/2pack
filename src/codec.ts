@@ -125,8 +125,8 @@ export interface Impl<T> extends Codec<T> {
     write(w: Writer, v: T): void;
     read(r: Reader): T;
     /**
-     * An extensible record (it has `added` fields): it owns the rest of its range, so it must be the top-level
-     * codec, and `unpack` does not reject bytes after the last field it knows.
+     * The record depends on where its range ends (it has `added` fields or is `extensible`), so it must be the
+     * top-level codec: something placed after it could never be found.
      */
     readonly open: boolean;
     /** Set by `added(...)`: the field may be missing from older packets and then takes `fallback`. */
@@ -147,7 +147,14 @@ let writing = false;
 const SCRATCH_KEEP = 1 << 20;
 
 /** @internal */
-export function make<T>(min: number, max: number, write: (w: Writer, v: T) => void, read: (r: Reader) => T, open = false): Impl<T> {
+export function make<T>(
+    min: number,
+    max: number,
+    write: (w: Writer, v: T) => void,
+    read: (r: Reader) => T,
+    open = false,
+    lenient = false,
+): Impl<T> {
     let scratch: Uint8Array | null = null;
     let lastLen = 0;
 
@@ -243,16 +250,16 @@ export function make<T>(min: number, max: number, write: (w: Writer, v: T) => vo
         unpack(input, offset = 0, end) {
             const stop = unpackAtImpl(input, offset, end);
             const value = read(reader);
-            // An extensible record owns the rest of its range: bytes after the last field it knows are fields
-            // added by a newer writer, not garbage.
-            if (!open && reader.pos !== stop) fail('invalid', `${stop - reader.pos} trailing byte(s) after the value`);
+            // Strict by default: every byte must belong to the value. Only a record explicitly declared
+            // `extensible` accepts bytes after its last known field (fields a newer writer appended).
+            if (!lenient && reader.pos !== stop) fail('invalid', `${stop - reader.pos} trailing byte(s) after the value`);
             return value;
         },
 
         unpackAt(input, offset = 0, end) {
             const stop = unpackAtImpl(input, offset, end);
             const value = read(reader);
-            return [value, open ? stop : reader.pos];
+            return [value, lenient ? stop : reader.pos];
         },
     };
     return codec;

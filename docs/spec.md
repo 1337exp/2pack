@@ -12,7 +12,7 @@ There is **no schema on the wire**: no field names, no tags, no version byte, no
 - **An encoder never writes outside the packet.** `packInto` touches exactly the bytes it reports, nothing before `offset` and nothing after the packet, and a buffer of exactly the packet's size is enough. A buffer that is detached, or was resized after use, is a `PackError`, never a raw `TypeError`.
 - **A decoder never reads outside `[offset, end)`** and never trusts a length it has not checked against both its declared maximum and the bytes that remain.
 - **Decoding is strict where the format is canonical** (booleans, enum indices, varints) and returns an error instead of guessing.
-- **`unpack` consumes its range exactly.** Bytes left over after the value are an error (`invalid`); `unpackAt` allows them and returns where the value ended, for reading several values from one buffer. The one exception is an *extensible* record (see "Evolution"), which owns the rest of its range.
+- **`unpack` consumes its range exactly.** Bytes left over after the value are an error (`invalid`); `unpackAt` allows them and returns where the value ended, for reading several values from one buffer. The one exception is a record declared `{ extensible: true }` (see "Evolution"), which owns the rest of its range.
 
 ## Types
 
@@ -60,17 +60,18 @@ A packet carries no field names or tags, so a reader needs the schema that wrote
 ```ts
 // version 1, declared extensible from the start
 const Player = define({ id: u32, name: str(16) }, { extensible: true });
-// version 2: the new field goes LAST, wrapped in added(); the number is what an older packet decodes to
-const Player = define({ id: u32, name: str(16), shield: added(u16, 0) });
+// version 2: the new field goes LAST, wrapped in added(); the number is what an older packet decodes to.
+// It is extensible too, so that it will read version 3 when that comes.
+const Player = define({ id: u32, name: str(16), shield: added(u16, 0) }, { extensible: true });
 ```
 
 Rules, all of them enforced:
 
 - The writer always writes every field it knows. Nothing extra is stored: **zero bytes of overhead**.
 - A reader knows where the packet ends (`end`, from the transport: a WebSocket message, a length prefix). **Reading an older packet**: after the last required field, every `added` field that starts exactly at `end` takes its default. A packet that ends in the middle of a field is `truncated`, not defaulted.
-- **Reading a newer packet**: a record that is *extensible* ignores the bytes after its last known field. A record is extensible if it has `added` fields or was declared with `{ extensible: true }`. **A reader built without it rejects such a packet** (`invalid`, trailing bytes), so declare it from the first version of a message.
+- **Strict by default.** A record rejects any byte after its last field (`invalid`, trailing bytes), `added` fields included. **Reading a newer packet**: only a record declared `{ extensible: true }` ignores the bytes after its last known field. `added` alone does not turn that on. **A reader built without it rejects such a packet**, so declare it from the first version of a message.
 - `added` fields must be the last fields of the record.
-- An extensible record owns the rest of its range, so it can only be the top-level codec: it cannot be an array item, an `optional` or a field of another record. `define`, `array`, `optional` and `added` refuse it at schema-build time.
+- A record with `added` fields, or one declared extensible, depends on where its range ends, so it can only be the top-level codec: it cannot be an array item, an `optional` or a field of another record. `define`, `array`, `optional` and `added` refuse it at schema-build time.
 - `unpackAt` on an extensible record returns the end of its range as the end offset.
 - The default of `added` must be a valid value of the field's type (checked when the schema is built); object defaults are copied for every decode.
 

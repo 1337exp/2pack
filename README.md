@@ -62,17 +62,17 @@ The byte-level format is in [docs/spec.md](docs/spec.md), with test vectors in `
 
 ## Evolving a packet
 
-Packets are strict: no names or tags on the wire, so a reader needs the schema that wrote them. One kind of change is supported, and it costs nothing on the wire or in speed: **appending fields at the end**.
+Packets are strict, and **strict is the default**: no names or tags on the wire, a reader needs the schema that wrote the packet, and any byte beyond the last field is an error. Flexibility is opt-in, per message, with `{ extensible: true }`. One kind of change is supported, and it costs nothing on the wire or in speed: **appending fields at the end**.
 
 ```ts
 // version 1: declared extensible from the start, so it already ignores fields a later version appends
 const Player = define({ id: u32, name: str(16) }, { extensible: true });
 
 // version 2: the new field goes last, wrapped in added(); an older packet decodes with the default
-const Player = define({ id: u32, name: str(16), shield: added(u16, 0) });
+const Player = define({ id: u32, name: str(16), shield: added(u16, 0) }, { extensible: true });
 ```
 
-New server, old client and old server, new client both work: a new reader fills what an old packet lacks, an old reader skips what a new packet adds. The rules and what it cannot do (removing or reordering fields, nesting) are in [docs/spec.md](docs/spec.md#evolution). Two things to know: it relies on the transport telling you where the packet ends (a WebSocket message does), and an extensible record no longer reports extra bytes as an error.
+New server, old client and old server, new client both work: a new reader fills what an old packet lacks, an old reader skips what a new packet adds. The rules and what it cannot do (removing or reordering fields, nesting) are in [docs/spec.md](docs/spec.md#evolution). Two things to know: it relies on the transport telling you where the packet ends (a WebSocket message does), and an extensible record no longer reports extra bytes as an error (that is the price of opting in).
 
 ## You own the buffer
 
@@ -98,9 +98,9 @@ Handing a `packShared` view to `socket.write()` is a real bug under backpressure
 
 A serializer sits on the network edge, so it should be tested like it. What this one has been through:
 
-- **336 tests**, and the byte format is pinned by **53 hand-computed vectors** from the spec, each checked packing, unpacking, into an exactly sized buffer and with the surroundings untouched.
+- **338 tests**, and the byte format is pinned by **53 hand-computed vectors** from the spec, each checked packing, unpacking, into an exactly sized buffer and with the surroundings untouched.
 - **Seeded, reproducible fuzzing.** Thousands of random packets round-trip; every packet is truncated at every length; 40 000 random single-byte corruptions and 20 000 random buffers are fed to the decoders. The rule being tested: decoding hostile bytes throws `PackError` and nothing else, and never allocates for a length the input cannot back.
-- **Mutation check** (`npm run mutate`): the code is broken in 34 deliberate ways, one at a time (drop a bounds check, flip a byte order, wrap instead of reject, ...), and the tests must notice every one. They do. The first run let 2 of 19 through, which exposed two weak tests, now fixed.
+- **Mutation check** (`npm run mutate`): the code is broken in 35 deliberate ways, one at a time (drop a bounds check, flip a byte order, wrap instead of reject, ...), and the tests must notice every one. They do. The first run let 2 of 19 through, which exposed two weak tests, now fixed.
 - **Independent adversarial review** by another AI model (Grok), which read the spec and wrote its own differential fuzzers against the library. It found 6 bugs, one of them serious (`packInto` wrote bytes after the end of the packet) and missed by our own tests. All fixed, each pinned by a regression test (`tests/regressions.test.ts`).
 - **A real browser**: `npm run browser` runs 95 checks in the page (Chromium 152).
 

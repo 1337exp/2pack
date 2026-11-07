@@ -617,13 +617,15 @@ export function added<T>(item: Codec<T>, fallback: T): Codec<T> {
 
 export interface DefineOptions {
     /**
-     * Let this record's readers ignore bytes after the last field they know (fields a NEWER writer appended).
-     * Declare it from the first version of a message: a reader built without it rejects such packets. A record
-     * with `added(...)` fields is extensible automatically. Costs nothing on the wire; the price is that extra
-     * bytes are no longer reported as an error. Top-level codec only.
-     * Читатели такой записи игнорируют байты после последнего известного поля (поля, дописанные БОЛЕЕ НОВЫМ
+     * Off by default: a record is STRICT and any byte after its last field is an error. Turn this on to let the
+     * record's readers ignore bytes after the last field they know (fields a NEWER writer appended). Declare it
+     * from the first version of a message: a reader built without it rejects such packets. `added(...)` does not
+     * turn it on. Costs nothing on the wire; the price is that extra bytes are no longer reported as an error.
+     * Top-level codec only.
+     * По умолчанию выключено: запись СТРОГАЯ, любой байт после последнего поля это ошибка. Включите, чтобы
+     * читатели записи игнорировали байты после последнего известного поля (поля, дописанные БОЛЕЕ НОВЫМ
      * писателем). Объявляйте с первой версии сообщения: читатель без этой опции такие пакеты отвергает.
-     * Запись с `added(...)` расширяема автоматически. На проводе бесплатно, но лишние байты больше не ошибка.
+     * `added(...)` её не включает. На проводе бесплатно, но лишние байты больше не ошибка.
      */
     extensible?: boolean;
 }
@@ -657,7 +659,11 @@ export function define<S extends Shape>(shape: S, options: DefineOptions = {}): 
         max += c.max;
     }
     const n = names.length;
-    const open = options.extensible === true || required < n;
+    // `open`: the record depends on where its range ends (added fields or extensible), so it cannot be nested.
+    // `lenient`: only an explicit `extensible: true` accepts bytes after the last known field; `added` alone
+    // fills in defaults for an older packet but still rejects a newer one.
+    const lenient = options.extensible === true;
+    const open = lenient || required < n;
     const fallbacks = codecs.map((c) => c.fallback);
     return make<Value<S>>(
         min,
@@ -695,5 +701,6 @@ export function define<S extends Shape>(shape: S, options: DefineOptions = {}): 
             return out as Value<S>;
         },
         open,
+        lenient,
     );
 }

@@ -62,7 +62,7 @@
  [
   "unpack: allow trailing bytes",
   "src/codec.ts",
-  "if (!open && reader.pos !== stop) fail('invalid', `${stop - reader.pos} trailing byte(s) after the value`);",
+  "if (!lenient && reader.pos !== stop) fail('invalid', `${stop - reader.pos} trailing byte(s) after the value`);",
   ""
  ],
  [
@@ -176,14 +176,14 @@
  [
   "evolution: closed records also ignore the tail",
   "src/codec.ts",
-  "if (!open && reader.pos !== stop)",
+  "if (!lenient && reader.pos !== stop)",
   "if (false)"
  ],
  [
   "evolution: ignore the extensible option",
   "src/types.ts",
-  "options.extensible === true || required < n",
-  "required < n"
+  "const lenient = options.extensible === true;",
+  "const lenient = false;"
  ],
  [
   "evolution: default a field cut in the middle",
@@ -194,7 +194,7 @@
  [
   "evolution: unpackAt end for extensible records",
   "src/codec.ts",
-  "return [value, open ? stop : reader.pos];",
+  "return [value, lenient ? stop : reader.pos];",
   "return [value, reader.pos];"
  ],
  [
@@ -202,5 +202,11 @@
   "src/types.ts",
   "        it.pack(fallback);\n",
   ""
+ ],
+ [
+  "evolution: added() silently implies tolerance of extra bytes",
+  "src/types.ts",
+  "const lenient = options.extensible === true;",
+  "const lenient = options.extensible === true || required < n;"
  ]
 ]

@@ -14,11 +14,12 @@ function codeOf(fn: () => unknown): string {
     return 'none';
 }
 
-// Three generations of the same message. Each one only appends fields.
+// Three generations of the same message. Each one only appends fields, and each is declared extensible so that it
+// also reads packets from generations newer than itself.
 // The FIRST version is declared extensible, so that it already ignores fields a later version appends.
 const V1 = define({ id: u8, name: str(8) }, { extensible: true });
-const V2 = define({ id: u8, name: str(8), hp: added(u16, 100) });
-const V3 = define({ id: u8, name: str(8), hp: added(u16, 100), tag: added(str(4), 'none'), flags: added(u8, 7) });
+const V2 = define({ id: u8, name: str(8), hp: added(u16, 100) }, { extensible: true });
+const V3 = define({ id: u8, name: str(8), hp: added(u16, 100), tag: added(str(4), 'none'), flags: added(u8, 7) }, { extensible: true });
 
 describe('schema evolution: appending fields', () => {
     it('wire bytes of the hand-computed example', () => {
@@ -83,6 +84,26 @@ describe('schema evolution: appending fields', () => {
         expect(codeOf(() => Closed.unpack(fromV2))).toBe('invalid');
     });
 
+    it('strict is the default: added() alone fills defaults but still rejects a newer packet', () => {
+        const StrictV2 = define({ id: u8, name: str(8), hp: added(u16, 100) });
+        // reads older packets (the default is used) and exactly-matching packets...
+        expect(StrictV2.unpack(V1.pack({ id: 1, name: 'a' }))).toEqual({ id: 1, name: 'a', hp: 100 });
+        expect(StrictV2.unpack(V2.pack({ id: 1, name: 'a', hp: 9 }))).toEqual({ id: 1, name: 'a', hp: 9 });
+        // ...but a packet from a newer generation is an error, not silently half-read
+        const fromV3 = V3.pack({ id: 1, name: 'a', hp: 9, tag: 'abcd', flags: 1 });
+        expect(codeOf(() => StrictV2.unpack(fromV3))).toBe('invalid');
+        // and one stray byte after a complete packet is caught too
+        const stray = new Uint8Array([...V2.pack({ id: 1, name: 'a', hp: 9 }), 0]);
+        expect(codeOf(() => StrictV2.unpack(stray))).toBe('invalid');
+        expect(StrictV2.unpackAt(stray)[1]).toBe(stray.length - 1);
+    });
+
+    it('a plain define() is strict, and { extensible: false } is the same as leaving it out', () => {
+        const plain = define({ a: u8 });
+        const off = define({ a: u8 }, { extensible: false });
+        for (const c of [plain, off]) expect(codeOf(() => c.unpack(Uint8Array.of(1, 2)))).toBe('invalid');
+    });
+
     it('extensible with no added fields is allowed and nests nowhere', () => {
         const open = define({ a: u8 }, { extensible: true });
         expect(open.unpack(Uint8Array.of(1, 2, 3))).toEqual({ a: 1 });
@@ -138,6 +159,8 @@ describe('rules that keep evolution safe', () => {
         expect(() => optional(open)).toThrow(TypeError);
         expect(() => define({ inner: open })).toThrow(TypeError);
         expect(() => added(open, { a: 1, b: 1 })).toThrow(TypeError);
+        // a record with added() but without extensible is also top-level only: it depends on where its range ends
+        expect(() => array(define({ a: u8, b: added(u8, 0) }), 3)).toThrow(TypeError);
         // a plain record may be nested, and may sit inside an extensible one
         const plain = define({ a: u8 });
         expect(() => define({ x: u8, p: added(plain, { a: 1 }) })).not.toThrow();

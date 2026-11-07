@@ -10,7 +10,7 @@ A rewrite from scratch; not compatible with 1.x.
 - Declared maximum for every string, byte array and list; values over it are errors, never truncated. Integers are checked, not wrapped.
 - Decoding is bounds-checked and throws only `PackError`, with a `code` and a `path`.
 - New types: `bool`, `varuint`, `varint`, `optional`, `array`, `enumOf`, `quant`, nested `define`.
-- Schema evolution by appending: `added(type, default)` fields at the end of a top-level record, and `define(shape, { extensible: true })` so that a first version already ignores what a later one appends. Zero bytes on the wire, no measurable speed cost, rules in `docs/spec.md`.
+- Schema evolution by appending: `added(type, default)` fields at the end of a top-level record, and `define(shape, { extensible: true })` so that a first version already ignores what a later one appends. Strict stays the default: only an explicit `extensible: true` accepts bytes after the last known field, `added` alone does not. Zero bytes on the wire, no measurable speed cost, rules in `docs/spec.md`.
 - Zero dependencies, ESM only, no code generation, no build step beyond `tsc`.
 - Removed: runtime string schemas, the `offset` setter, `json<N>`, the browser Buffer polyfill, the UMD bundle.
 
@@ -25,4 +25,4 @@ Fixed before the first release, after an independent review of the first commit 
 
 `npm run browser` runs 95 checks (spec vectors, ownership, bounds, hostile input, resizable and detached buffers) in a real browser; passed in Chromium 152.
 
-`npm run mutate` breaks the code in 25 deliberate ways, one at a time, and checks that the tests notice every one.
+`npm run mutate` breaks the code in 35 deliberate ways, one at a time, and checks that the tests notice every one.

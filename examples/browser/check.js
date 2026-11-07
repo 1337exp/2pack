@@ -132,8 +132,8 @@ test('transferred (detached) buffer is a PackError and codecs keep working', () 
 // --- schema evolution ---------------------------------------------------------------------------------------------
 group('schema evolution');
 const V1 = define({ id: u8, name: str(8) }, { extensible: true });
-const V2 = define({ id: u8, name: str(8), hp: added(u16, 100) });
-const V3 = define({ id: u8, name: str(8), hp: added(u16, 100), tag: added(str(4), 'none') });
+const V2 = define({ id: u8, name: str(8), hp: added(u16, 100) }, { extensible: true });
+const V3 = define({ id: u8, name: str(8), hp: added(u16, 100), tag: added(str(4), 'none') }, { extensible: true });
 test('3 x 3: every generation reads every other generation', () => {
     const packets = [V1.pack({ id: 1, name: 'a' }), V2.pack({ id: 1, name: 'a', hp: 1 }), V3.pack({ id: 1, name: 'a', hp: 1, tag: 't' })];
     for (const p of packets) for (const reader of [V1, V2, V3]) { const g = reader.unpack(p); eq(g.id, 1); eq(g.name, 'a'); }
@@ -153,6 +153,9 @@ test('an extensible record cannot be nested; a closed record rejects a newer tai
     for (const f of [() => array(V1, 2), () => optional(V1), () => define({ inner: V1 })]) { try { f(); } catch (e) { if (e instanceof TypeError) refused++; } }
     eq(refused, 3, 'nesting refusals');
     eq(code(() => define({ id: u8, name: str(8) }).unpack(V2.pack({ id: 1, name: 'a', hp: 1 }))), 'invalid');
+    const StrictV2 = define({ id: u8, name: str(8), hp: added(u16, 100) }); // added() alone is still strict
+    eq(StrictV2.unpack(V1.pack({ id: 1, name: 'a' })).hp, 100, 'default for an older packet');
+    eq(code(() => StrictV2.unpack(V3.pack({ id: 1, name: 'a', hp: 9, tag: 'abcd' }))), 'invalid', 'a newer packet is rejected');
 });
 
 // --- speed (informational) ----------------------------------------------------------------------------------------
